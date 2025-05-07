@@ -7,7 +7,6 @@ export const handleUpload = async (req: Request, res: Response) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }
-
   const { clientName } = req.body;
   const file = req.file;
   const uuid = uuidv4();
@@ -24,13 +23,14 @@ export const handleUpload = async (req: Request, res: Response) => {
 
     const client_id = (clientRows as any[])[0].id;
 
+    // call the upload function
     const result = await insertDocument({
       uuid,
       original_name: file.originalname,
       client_id,
       uploaded_by: "admin",
     });
-
+    // request after the model file
     res.status(200).json({
       message: "File metadata saved to documents table",
       documentId: (result as any).insertId,
