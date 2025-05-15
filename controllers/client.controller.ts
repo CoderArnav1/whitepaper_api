@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import pool from "../config/db";
 import { Client } from "../models/client.model";
+import { logAction } from "../utils/logAction";
 
 export const createClient = async (
   req: Request<{}, {}, Client>,
@@ -14,6 +15,13 @@ export const createClient = async (
     );
     res.status(201).json({ id: (result as any).insertId, name });
   } catch (error) {
+    const err = error as Error;
+    await logAction({
+      message: `Failed to create client: ${err.message}`,
+      action: "create_client",
+      status: "fail",
+      user_id: 1111,
+    });
     res.status(500).json({ error: "Failed to create client" });
   }
 };
@@ -27,6 +35,13 @@ export const getAllClientsIncludingDeleted = async (
     );
     res.status(200).json(rows);
   } catch (error) {
+    const err = error as Error;
+    await logAction({
+      message: `Failed to fetch all clients: ${err.message}`,
+      action: "get_clients",
+      status: "fail",
+      user_id: 1111,
+    });
     res.status(500).json({ error: "Failed to fetch clients" });
   }
 };
@@ -48,6 +63,13 @@ export const updateClient = async (req: Request, res: Response) => {
     ]);
     res.json({ message: "Client updated" });
   } catch (error) {
+    const err = error as Error;
+    await logAction({
+      message: `Failed to update client: ${err.message}`,
+      action: "update_client",
+      status: "fail",
+      user_id: 1111,
+    });
     res.status(500).json({ error: "Update failed" });
   }
 };
@@ -61,6 +83,13 @@ export const deleteClient = async (req: Request, res: Response) => {
     );
     res.json({ message: "Client deleted" });
   } catch (error) {
+    const err = error as Error;
+    await logAction({
+      message: `Failed to delete client: ${err.message}`,
+      action: "delete_client",
+      status: "fail",
+      user_id: 1111,
+    });
     res.status(500).json({ error: "Delete failed" });
   }
 };
@@ -96,7 +125,13 @@ export const getClientDocuments = async (req: Request, res: Response) => {
 
     res.status(200).json(documents);
   } catch (error) {
-    console.error("Error fetching client documents:", error);
+    const err = error as Error;
+    await logAction({
+      message: `Failed to fetch client documents: ${err.message}`,
+      action: "get_client_documents",
+      status: "fail",
+      user_id: 1111,
+    });
     res.status(500).json({ error: "Failed to fetch documents" });
   }
 };

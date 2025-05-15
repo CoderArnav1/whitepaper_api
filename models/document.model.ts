@@ -1,4 +1,5 @@
 import pool from "../config/db";
+import { logAction } from "../utils/logAction";
 
 export const insertDocument = async ({
   uuid,
@@ -39,6 +40,16 @@ VALUES (?,?,?,?,?,?);
     return result;
   } catch (error) {
     console.error("Error inserting document:", error);
+
+    const err = error as Error;
+
+    await logAction({
+      message: `Failed to insert document: ${err.message}`,
+      action: "insert_document",
+      status: "fail",
+      user_id: 1111,
+    });
+
     throw new Error("Database insert failed");
   }
 };

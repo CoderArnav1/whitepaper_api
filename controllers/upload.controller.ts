@@ -3,9 +3,16 @@ import pool from "../config/db";
 import { v4 as uuidv4 } from "uuid";
 import { insertDocument } from "../models/document.model";
 import { uploadFileToS3 } from "../services/s3Upload.service";
+import { logAction } from "../utils/logAction"; // import your logging helper
+
 export const handleUpload = async (req: Request, res: Response) => {
   if (!req.file) {
-    console.log("No file uploaded");
+    await logAction({
+      message: "No file uploaded",
+      action: "upload_file",
+      status: "fail",
+      user_id: 1111,
+    });
     return res.status(400).json({ error: "No file uploaded" });
   }
 
@@ -14,9 +21,12 @@ export const handleUpload = async (req: Request, res: Response) => {
   const uuid = uuidv4();
 
   try {
-    console.log(
-      `Starting upload for client: ${clientName}, file: ${file.originalname}`
-    );
+    await logAction({
+      message: `Starting upload for client: ${clientName}, file: ${file.originalname}`,
+      action: "upload_file",
+      status: "start",
+      user_id: 1111,
+    });
 
     const [clientRows] = await pool.query(
       "SELECT id FROM client_master WHERE name = ?",
@@ -24,7 +34,12 @@ export const handleUpload = async (req: Request, res: Response) => {
     );
 
     if ((clientRows as any[]).length === 0) {
-      console.log(`Client not found: ${clientName}`);
+      await logAction({
+        message: `Client not found: ${clientName}`,
+        action: "upload_file",
+        status: "fail",
+        user_id: 1111,
+      });
       return res.status(404).json({ error: "Client not found" });
     }
 
@@ -33,20 +48,31 @@ export const handleUpload = async (req: Request, res: Response) => {
 
     let s3Result;
     try {
-      console.log(`Attempting to upload file to S3 with key: ${s3Key}`);
+      await logAction({
+        message: `Attempting to upload file to S3 with key: ${s3Key}`,
+        action: "upload_to_s3",
+        status: "start",
+        user_id: 1111,
+      });
+
       s3Result = await uploadFileToS3(file.buffer, s3Key);
-      console.log(`File successfully uploaded to S3: ${s3Result.Location}`);
+
+      await logAction({
+        message: `File successfully uploaded to S3: ${s3Result.Location}`,
+        action: "upload_to_s3",
+        status: "success",
+        user_id: 1111,
+      });
     } catch (err) {
-      if (err instanceof Error) {
-        console.log(
-          `Upload to CDN failed for file: ${file.originalname}. Error: ${err.message}`
-        );
-      } else {
-        console.log(
-          `Upload to CDN failed for file: ${file.originalname}. Unknown error:`,
-          err
-        );
-      }
+      await logAction({
+        message:
+          err instanceof Error
+            ? `Upload to CDN failed for file: ${file.originalname}. Error: ${err.message}`
+            : `Upload to CDN failed for file: ${file.originalname}. Unknown error`,
+        action: "upload_to_s3",
+        status: "fail",
+        user_id: 1111,
+      });
       return res.status(500).json({ error: "Upload to CDN failed" });
     }
 
@@ -59,15 +85,27 @@ export const handleUpload = async (req: Request, res: Response) => {
       uploaded_by: "admin",
     });
 
-    console.log(
-      `Document metadata saved. Document ID: ${(result as any).insertId}`
-    );
+    await logAction({
+      message: `Document metadata saved. Document ID: ${
+        (result as any).insertId
+      }`,
+      action: "save_document",
+      status: "success",
+      user_id: 1111,
+      doc_id: (result as any).insertId,
+    });
+
     res.status(200).json({
       message: "File metadata saved to documents table",
       documentId: (result as any).insertId,
     });
   } catch (error) {
-    console.log("Upload failed:", error);
+    await logAction({
+      message: `Upload failed: ${(error as Error).message}`,
+      action: "upload_file",
+      status: "fail",
+      user_id: 1111,
+    });
     res.status(500).json({ error: "Internal server error" });
   }
 };
