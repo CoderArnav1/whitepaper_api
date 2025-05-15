@@ -17,9 +17,43 @@ export const validateFile = async (
     const fileType = file.mimetype;
     const fileSize = file.size;
 
+    //  const clientId =
+    //    req.body.client_id || req.query.client_id || req.params.client_id;
+    //
+    //  if (!clientId) {
+    //    return res
+    //      .status(400)
+    //      .json({ error: "client_id is required for validation" });
+    //  }
+
+    //  FETCHING THE CLIENT ID FROM THE CLEINT MASTER BY THE NAME OF THE CLIENT PROVIDED IN THE INPUT
+    const clientName = req.body.clientName || req.query.clientName;
+    let clientId;
+
+    try {
+      const [rows] = await pool.query(
+        "SELECT id FROM client_master WHERE name = ? LIMIT 1",
+        [clientName]
+      );
+
+      if ((rows as any[]).length === 0) {
+        return res.status(404).json({ error: "Client not found" });
+      }
+
+      clientId = (rows as any[])[0].id;
+    } catch (error: any) {
+      console.error("Database query error:", error.message || error);
+      return res
+        .status(500)
+        .json({ error: "Internal server error during client lookup" });
+    }
+
     const [configResult] = await pool.query(
-      "SELECT * FROM file_configs WHERE FIND_IN_SET(?, extensions) > 0 AND FIND_IN_SET(?, types) > 0",
-      [fileExt, fileType]
+      `SELECT * FROM file_configs 
+   WHERE client_id = ? 
+     AND FIND_IN_SET(?, extensions) > 0 
+     AND FIND_IN_SET(?, types) > 0`,
+      [clientId, fileExt, fileType]
     );
 
     if ((configResult as any[]).length === 0) {
