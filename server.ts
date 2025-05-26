@@ -3,6 +3,7 @@ import cors from "cors";
 import { Request, Response, NextFunction } from "express";
 import uploadRoutes from "./routes/upload";
 import clientRoutes from "./routes/client.routes";
+import fileConfigRoutes from "./routes/fileConfig.routes";
 import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./apiSpec"; // adjust if renamed
 import logrouter from "./routes/log";
@@ -14,6 +15,7 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use(cors());
 app.use(express.json());
+
 app.use((req, res, next) => {
   logAction({
     message: `HTTP ${req.method} ${req.url}`,
@@ -27,6 +29,7 @@ app.use((req, res, next) => {
 app.use("/upload", uploadRoutes);
 app.use("/clients", clientRoutes);
 app.use("/logs", logrouter);
+app.use("/file-config", fileConfigRoutes);
 app.get("/", (req, res) => {
   res.send("Backend is running");
 });

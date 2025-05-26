@@ -7,33 +7,20 @@ export const validateFile = async (
   res: Response,
   next: NextFunction
 ) => {
-  const file = req.file;
+  const files = req.files as Express.Multer.File[];
 
-  if (!file) {
+  if (!files || files.length === 0) {
     await logAction({
-      message: "File is missing in request",
+      message: "No files uploaded in request",
       action: "validate_file",
       status: "fail",
       user_id: 1111,
     });
-    return res.status(400).json({ error: "File is required" });
+    return res.status(400).json({ error: "At least one file is required" });
   }
 
   try {
-    const fileExt = "." + file.originalname.split(".").pop()?.toLowerCase();
-    const fileType = file.mimetype;
-    const fileSize = file.size;
-
-    //  const clientId =
-    //    req.body.client_id || req.query.client_id || req.params.client_id;
-    //
-    //  if (!clientId) {
-    //    return res
-    //      .status(400)
-    //      .json({ error: "client_id is required for validation" });
-    //  }
-
-    //  FETCHING THE CLIENT ID FROM THE CLEINT MASTER BY THE NAME OF THE CLIENT PROVIDED IN THE INPUT
+    // Get clientId from clientName in request
     const clientName = req.body.clientName || req.query.clientName;
     let clientId;
 
@@ -67,39 +54,49 @@ export const validateFile = async (
         .json({ error: "Internal server error during client lookup" });
     }
 
-    const [configResult] = await pool.query(
-      `SELECT * FROM file_configs 
-   WHERE client_id = ? 
-     AND FIND_IN_SET(?, extensions) > 0 
-     AND FIND_IN_SET(?, types) > 0`,
-      [clientId, fileExt, fileType]
-    );
+    // Validate each file
+    for (const file of files) {
+      const fileExt = "." + file.originalname.split(".").pop()?.toLowerCase();
+      const fileType = file.mimetype;
+      const fileSize = file.size;
 
-    if ((configResult as any[]).length === 0) {
-      await logAction({
-        message: `Invalid file type or extension: ext=${fileExt}, type=${fileType}`,
-        action: "validate_file",
-        status: "fail",
-        user_id: 1111,
-      });
-      return res.status(400).json({ error: "Invalid file type or extension" });
+      const [configResult] = await pool.query(
+        `SELECT * FROM file_configs 
+         WHERE client_id = ? 
+           AND FIND_IN_SET(?, extensions) > 0 
+           AND FIND_IN_SET(?, types) > 0`,
+        [clientId, fileExt, fileType]
+      );
+
+      if ((configResult as any[]).length === 0) {
+        await logAction({
+          message: `Invalid file type or extension: ext=${fileExt}, type=${fileType}`,
+          action: "validate_file",
+          status: "fail",
+          user_id: 1111,
+        });
+        return res.status(400).json({
+          error: `Invalid file type or extension for file ${file.originalname}`,
+        });
+      }
+
+      const config = (configResult as any[])[0];
+
+      if (fileSize < config.min_size || fileSize > config.max_size) {
+        await logAction({
+          message: `File size out of range: size=${fileSize}, allowed=${config.min_size}-${config.max_size}`,
+          action: "validate_file",
+          status: "fail",
+          user_id: 1111,
+        });
+        return res.status(400).json({
+          error: `File ${file.originalname} size must be between ${config.min_size} and ${config.max_size} bytes`,
+        });
+      }
     }
 
-    const config = (configResult as any[])[0];
-
-    if (fileSize < config.min_size || fileSize > config.max_size) {
-      await logAction({
-        message: `File size out of range: size=${fileSize}, allowed=${config.min_size}-${config.max_size}`,
-        action: "validate_file",
-        status: "fail",
-        user_id: 1111,
-      });
-      return res.status(400).json({
-        error: `File size must be between ${config.min_size} and ${config.max_size} bytes`,
-      });
-    }
     await logAction({
-      message: `File passed validation checks: ext=${fileExt}, size=${fileSize}`,
+      message: `All files passed validation checks for client ${clientName}`,
       action: "validate_file",
       status: "success",
       user_id: 1111,
@@ -112,8 +109,7 @@ export const validateFile = async (
       message: `Unexpected validation error: ${error.message}`,
       action: "validate_file",
       status: "fail",
-
-      //user_id: req.user?.id || null,
+      user_id: 1111,
     });
     res.status(500).json({ error: "Internal server error during validation" });
   }

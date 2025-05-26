@@ -6,28 +6,21 @@ import { uploadFileToS3 } from "../services/s3Upload.service";
 import { logAction } from "../utils/logAction"; // import your logging helper
 
 export const handleUpload = async (req: Request, res: Response) => {
-  if (!req.file) {
+  const { clientName } = req.body;
+  const files = req.files as Express.Multer.File[];
+  const user_id = 1111;
+
+  if (!files || files.length === 0) {
     await logAction({
-      message: "No file uploaded",
+      message: "No files uploaded",
       action: "upload_file",
       status: "fail",
-      user_id: 1111,
+      user_id,
     });
-    return res.status(400).json({ error: "No file uploaded" });
+    return res.status(400).json({ error: "No files uploaded" });
   }
 
-  const { clientName } = req.body;
-  const file = req.file;
-  const uuid = uuidv4();
-
   try {
-    await logAction({
-      message: `Starting upload for client: ${clientName}, file: ${file.originalname}`,
-      action: "upload_file",
-      status: "start",
-      user_id: 1111,
-    });
-
     const [clientRows] = await pool.query(
       "SELECT id FROM client_master WHERE name = ?",
       [clientName]
@@ -38,73 +31,83 @@ export const handleUpload = async (req: Request, res: Response) => {
         message: `Client not found: ${clientName}`,
         action: "upload_file",
         status: "fail",
-        user_id: 1111,
+        user_id,
       });
       return res.status(404).json({ error: "Client not found" });
     }
 
     const client_id = (clientRows as any[])[0].id;
-    const s3Key = `${clientName}/${file.originalname}`;
+    const results = [];
 
-    let s3Result;
-    try {
-      await logAction({
-        message: `Attempting to upload file to S3 with key: ${s3Key}`,
-        action: "upload_to_s3",
-        status: "start",
-        user_id: 1111,
-      });
+    for (const file of files) {
+      const uuid = uuidv4();
+      const s3Key = `${clientName}/${file.originalname}`;
 
-      s3Result = await uploadFileToS3(file.buffer, s3Key);
+      try {
+        await logAction({
+          message: `Attempting to upload file to S3 with key: ${s3Key}`,
+          action: "upload_to_s3",
+          status: "start",
+          user_id,
+        });
 
-      await logAction({
-        message: `File successfully uploaded to S3: ${s3Result.Location}`,
-        action: "upload_to_s3",
-        status: "success",
-        user_id: 1111,
-      });
-    } catch (err) {
-      await logAction({
-        message:
-          err instanceof Error
-            ? `Upload to CDN failed for file: ${file.originalname}. Error: ${err.message}`
-            : `Upload to CDN failed for file: ${file.originalname}. Unknown error`,
-        action: "upload_to_s3",
-        status: "fail",
-        user_id: 1111,
-      });
-      return res.status(500).json({ error: "Upload to CDN failed" });
+        const s3Result = await uploadFileToS3(file.buffer, s3Key);
+
+        await logAction({
+          message: `File successfully uploaded to S3: ${s3Result.Location}`,
+          action: "upload_to_s3",
+          status: "success",
+          user_id,
+        });
+
+        const result = await insertDocument({
+          uuid,
+          original_name: file.originalname,
+          cdn_path: s3Result.Location,
+          s3_path: s3Key,
+          client_id,
+          uploaded_by: "admin",
+        });
+
+        await logAction({
+          message: `Document metadata saved. Document ID: ${(result as any).insertId}`,
+          action: "save_document",
+          status: "success",
+          user_id,
+          doc_id: (result as any).insertId,
+        });
+
+        results.push({
+          file: file.originalname,
+          documentId: (result as any).insertId,
+          cdn_path: s3Result.Location,
+        });
+      } catch (err) {
+        await logAction({
+          message: `Failed to upload or save file: ${file.originalname}`,
+          action: "upload_file",
+          status: "fail",
+          user_id,
+        });
+      }
     }
 
-    const result = await insertDocument({
-      uuid,
-      original_name: file.originalname,
-      cdn_path: s3Result.Location,
-      s3_path: s3Key,
-      client_id,
-      uploaded_by: "admin",
-    });
+    const mergedResponse = {
+      statusCode: "BIR.2000",
+      data: {
+        documentIds: results.map(r => r.documentId).join(","),
+        staticFileLinks: results.map(r => r.cdn_path),
+      },
+      message: results.length > 1 ? "Files uploaded successfully" : "File uploaded successfully",
+    };
 
-    await logAction({
-      message: `Document metadata saved. Document ID: ${
-        (result as any).insertId
-      }`,
-      action: "save_document",
-      status: "success",
-      user_id: 1111,
-      doc_id: (result as any).insertId,
-    });
-
-    res.status(200).json({
-      message: "File metadata saved to documents table",
-      documentId: (result as any).insertId,
-    });
+    res.status(200).json(mergedResponse);
   } catch (error) {
     await logAction({
       message: `Upload failed: ${(error as Error).message}`,
       action: "upload_file",
       status: "fail",
-      user_id: 1111,
+      user_id,
     });
     res.status(500).json({ error: "Internal server error" });
   }

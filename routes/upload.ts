@@ -1,18 +1,17 @@
 import express from "express";
 import multer from "multer";
+import { handleUpload } from "../controllers/upload.controller";
+import { validateFile } from "../middlewares/validateFile";
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
+
 /**
  * @swagger
  * tags:
  *   name: Upload
  *   description: File upload routes
  */
-import { handleUpload } from "../controllers/upload.controller";
-import { validateFile } from "../middlewares/validateFile";
-
-const router = express.Router();
 
 /**
  * @swagger
@@ -27,9 +26,11 @@ const router = express.Router();
  *           schema:
  *             type: object
  *             properties:
- *               file:
- *                 type: string
- *                 format: binary
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
  *               clientName:
  *                 type: string
  *               entityid:
@@ -46,7 +47,10 @@ const router = express.Router();
  *       404:
  *         description: Client not found
  */
-router.post("/", upload.single("file"), validateFile, handleUpload);
+
+const router = express.Router();
+
+router.post("/", upload.array("files"), validateFile, handleUpload);
 router.get("/", (req, res) => {
   res.send("Upload page");
 });
